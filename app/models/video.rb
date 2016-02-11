@@ -5,12 +5,21 @@ class Video
   attr_reader :question
   attr_reader :answers
 
-  def initialize(name, stream, sequels = nil, question = nil, answers = nil)
+  def initialize(name, stream)
     @name     = name
     @stream   = stream
-    @sequels  = sequels
+  end
+
+  def connect(question, answers, sequels)
     @question = question
     @answers  = answers
+    @sequels  = sequels
+
+    sequels.each do |answer_key, sequel_video|
+      if sequel_video.nil?
+        abort("Node #{name}: Couldn't find a sequel for answer  '#{answer_key}'.")
+      end
+    end
   end
 
 end
