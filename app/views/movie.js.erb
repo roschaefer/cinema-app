@@ -1,127 +1,41 @@
-var video           = document.getElementById("video-stream");
-var decisionTime    = 15;
-var decicsionActive = false;
-var decisionSound = new Audio('sounds/decision_sound.wav');
 
-
-var FILE = '/videos/iamerror_01_dashinit.mp4';
-var NUM_CHUNKS = 50;
 var video = document.querySelector('video');
-window.MediaSource = window.MediaSource || window.WebKitMediaSource;
-if (!!!window.MediaSource) {
-    alert('MediaSource API is not available');
+
+var assetURL = '/videos/iamerror_05_dashinit.mp4';
+// Need to be specific for Blink regarding codecs
+// ./mp4info frag_bunny.mp4 | grep Codec
+var mimeCodec = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"';
+
+if ('MediaSource' in window && MediaSource.isTypeSupported(mimeCodec)) {
+  var mediaSource = new MediaSource;
+  //console.log(mediaSource.readyState); // closed
+  video.src = URL.createObjectURL(mediaSource);
+  mediaSource.addEventListener('sourceopen', sourceOpen);
+} else {
+  console.error('Unsupported MIME type or codec: ', mimeCodec);
 }
 
-var mediaSource = new MediaSource();
-video.src = window.URL.createObjectURL(mediaSource);
-
-
-
-function callback(e) {
-  var sourceBuffer = mediaSource.addSourceBuffer('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
-
-
-  GET(FILE, function(uInt8Array) {
-    var file = new Blob([uInt8Array], {type: 'video/mp4'});
-    var chunkSize = Math.ceil(file.size / NUM_CHUNKS);
-
-
-    // Slice the video into NUM_CHUNKS and append each to the media element.
-    var i = 0;
-
-    (function readChunk_(i) {
-      var reader = new FileReader();
-
-      // Reads aren't guaranteed to finish in the same order they're started in,
-      // so we need to read + append the next chunk after the previous reader
-      // is done (onload is fired).
-      reader.onload = function(e) {
-        sourceBuffer.appendBuffer(new Uint8Array(e.target.result));
-        if (i == NUM_CHUNKS - 1) {
-          mediaSource.endOfStream();
-        } else {
-          if (video.paused) {
-            video.play(); // Start playing after 1st chunk is appended.
-          }
-          readChunk_(++i);
-        }
-      };
-
-      var startByte = chunkSize * i;
-      var chunk = file.slice(startByte, startByte + chunkSize);
-
-      reader.readAsArrayBuffer(chunk);
-    })(i);  // Start the recursive call by self calling.
+function sourceOpen (_) {
+  //console.log(this.readyState); // open
+  var mediaSource = this;
+  var sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
+  fetchAB(assetURL, function (buf) {
+    sourceBuffer.addEventListener('updateend', function (_) {
+      mediaSource.endOfStream();
+      video.play();
+      //console.log(mediaSource.readyState); // ended
+    });
+    sourceBuffer.appendBuffer(buf);
   });
-}
-
-mediaSource.addEventListener('sourceopen', callback, false);
-mediaSource.addEventListener('webkitsourceopen', callback, false);
-
-mediaSource.addEventListener('webkitsourceended', function(e) {
-  logger.log('mediaSource readyState: ' + this.readyState);
-}, false);
-
-function GET(url, callback) {
-  var xhr = new XMLHttpRequest();
-  xhr.open('GET', url, true);
-  xhr.responseType = 'arraybuffer';
-  xhr.send();
-
-  xhr.onload = function(e) {
-    if (xhr.status != 200) {
-      alert("Unexpected status code " + xhr.status + " for " + url);
-      return false;
-    }
-    callback(new Uint8Array(xhr.response));
-  };
-}
-
-
-
-
-ws.onmessage = function(message) {
-  var data = JSON.parse(message.data);
-  if (data.video) {
-    $("#decision-logo ").hide();
-    if (data.question != null) { decicsionActive = false; }
-    if (data.votes) { showDecisionResult(data.votes) }
-  } else if (data.the_end) {
-    $("#decision-logo").html('<div><p>Ende</p></div>');
-    $("#decision-logo").fadeIn( 3000 );
-  }
 };
 
-$("#video-stream").on("timeupdate", function() {
-    // TODO: Just calculate that once
-    var decicsionTime = this.duration - decisionTime;
-
-    if (this.currentTime > decicsionTime && decicsionActive == false) {
-      decisionSound.play();
-      $("#decision-logo").fadeIn( 3000 );
-      ws.send(JSON.stringify({ decision_active: true }));
-      decicsionActive = true;
-    }
-});
-
-$("#video-stream").on("ended", function() {
-  ws.send(JSON.stringify({ video: 'ended' }));
-});
-
-function showDecisionResult(votes) {
-  var votes = JSON.parse(votes);
-  if (!jQuery.isEmptyObject(votes)) {
-    $("#decision-result-movie").html('');
-    for (vote in votes) {
-      $("#decision-result-movie").append(
-        "<div>" + vote + " : " + votes[vote] + "</div>");
-    }
-    $("#decision-result-movie").fadeIn( 1000 );
-    $("#decision-result-movie").fadeOut( 10000 );
-  }
-}
-
-$(document).ready(function() {
-  $("#decision-logo").hide();
-  $("#decision-result-movie").hide();
-});
+function fetchAB (url, cb) {
+  //console.log(url);
+  var xhr = new XMLHttpRequest;
+  xhr.open('get', url);
+  xhr.responseType = 'arraybuffer';
+  xhr.onload = function () {
+    cb(xhr.response);
+  };
+  xhr.send();
+};
